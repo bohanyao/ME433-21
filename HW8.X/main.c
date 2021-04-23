@@ -1,5 +1,7 @@
 #include<xc.h>           // processor SFR definitions
 #include<sys/attribs.h>  // __ISR macro
+#include "math.h"
+#include "i2c_master_noint.h"
 
 // DEVCFG0
 #pragma config DEBUG = OFF // disable debugging
@@ -32,6 +34,11 @@
 #pragma config PMDL1WAY = OFF // allow multiple reconfigurations
 #pragma config IOL1WAY = OFF // allow multiple reconfigurations
 
+unsigned char readPin(unsigned char readaddress, unsigned char rgstr, unsigned char writeaddress);
+void setPin(unsigned char writeaddress, unsigned char rgstr, unsigned char value);
+void LEDHeartbeat();
+void delay();
+
 int main() {
 
     __builtin_disable_interrupts(); // disable interrupts while initializing things
@@ -50,29 +57,75 @@ int main() {
 
     // do your TRIS and LAT commands here
     TRISAbits.TRISA4 = 0;
-    LATAbits.LATA4 = 1;
-    TRISBbits.TRISB4 = 1;
-    
+            
     __builtin_enable_interrupts();
-
-    while (1) {
-        // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
-        // remember the core timer runs at half the sysclk
-        LATAbits.LATA4 = 0;
-        if (PORTBbits.RB4 == 0) {
-            LATAbits.LATA4 = 1;
-            delay();
-            LATAbits.LATA4 = 0;
-            delay();
-            LATAbits.LATA4 = 1;
-            delay();
-            LATAbits.LATA4 = 0;
-            delay();
+    
+    unsigned char writeaddress = 0b01000000;
+    unsigned char readaddress = 0b01000001;
+    
+    i2c_master_setup();
+    
+    unsigned char IODIRA = 0x00;
+    unsigned char IODIRB = 0x01;
+    
+    unsigned char IODIRA_out = 0x00;
+    unsigned char IODIRB_in = 0xFF;
+    
+    unsigned char OLATA = 0x14;
+    unsigned char GPIOB = 0x13;
+    
+    unsigned char on = 0xFF;
+    unsigned char off = 0x00;
+    
+    unsigned char readval;
+    
+    
+    setPin(writeaddress, IODIRA, IODIRA_out);
+    setPin(writeaddress, IODIRB, IODIRB_in);
+    
+    while(1){
+        LEDHeartbeat();
+        readval = readPin(readaddress, GPIOB, writeaddress);
+        if (readval == 0x00){
+            setPin(writeaddress, OLATA, on); 
+        }
+        else{
+            setPin(writeaddress, OLATA, off);
         }
     }
 }
 
 void delay() {
     _CP0_SET_COUNT(0);
-        while(_CP0_GET_COUNT() < 24000000/2){} //1/2 sec
+        while(_CP0_GET_COUNT() < 24000000/10){} //10 Hz
+}
+
+void LEDHeartbeat() {
+    LATAbits.LATA4 = 1;
+    delay();
+    LATAbits.LATA4 = 0;
+    delay();
+}
+
+void setPin(unsigned char writeaddress, unsigned char rgstr, unsigned char value) {
+    i2c_master_start();
+    i2c_master_send(writeaddress);
+    i2c_master_send(rgstr);
+    i2c_master_send(value);
+    i2c_master_stop();
+}
+
+unsigned char readPin(unsigned char readaddress, unsigned char rgstr, unsigned char writeaddress) {
+    int i = 1;
+    unsigned char readval;
+    i2c_master_start();
+    i2c_master_send(writeaddress);
+    i2c_master_send(rgstr);
+    i2c_master_restart();
+    i2c_master_send(readaddress);
+    readval = i2c_master_recv();
+    i2c_master_ack(i);
+    i2c_master_stop();
+    
+    return(readval);
 }

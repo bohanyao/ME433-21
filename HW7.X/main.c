@@ -1,5 +1,7 @@
 #include<xc.h>           // processor SFR definitions
 #include<sys/attribs.h>  // __ISR macro
+#include "spi.h"
+#include "math.h"
 
 // DEVCFG0
 #pragma config DEBUG = OFF // disable debugging
@@ -32,6 +34,8 @@
 #pragma config PMDL1WAY = OFF // allow multiple reconfigurations
 #pragma config IOL1WAY = OFF // allow multiple reconfigurations
 
+void delay();
+
 int main() {
 
     __builtin_disable_interrupts(); // disable interrupts while initializing things
@@ -50,23 +54,44 @@ int main() {
 
     // do your TRIS and LAT commands here
     TRISAbits.TRISA4 = 0;
-    LATAbits.LATA4 = 1;
+    LATAbits.LATA4 = 0;
     TRISBbits.TRISB4 = 1;
+    
+    initSPI();
     
     __builtin_enable_interrupts();
 
+    unsigned char channel1 = 0; //A = 0, B = 1
+    unsigned char channel2 = 1;
+    unsigned short p1;
+    unsigned short p2;
+    
+    unsigned short sinarray[] = {511,575,638,699,758,812,861,906,943,974,998,1014,1022,1022,1014,998,974,943,906,861,812,758,699,638,575,511,447,384,323,264,210,161,116,79,48,24,8,0,0,8,24,48,79,116,161,210,264,323,384,447,511,575,638,699,758,812,861,906,943,974,998,1014,1022,1022,1014,998,974,943,906,861,812,758,699,638,575,511,447,384,323,264,210,161,116,79,48,24,8,0,0,8,24,48,79,116,161,210,264,323,384,447,511};
+    unsigned short triarray[] = {0,19,40,60,81,101,122,142,163,183,204,224,245,265,286,306,327,347,368,388,409,429,450,470,491,511,531,552,572,593,613,634,654,675,695,716,736,757,777,798,818,839,859,880,900,921,941,962,982,1003,1023,1003,982,962,941,921,900,880,859,839,818,798,777,757,736,716,695,675,654,634,613,593,572,552,531,511,491,470,450,429,409,388,368,347,327,306,286,265,245,224,204,183,163,142,122,101,81,60,40,19,0};
+            
+    int j;
+    
     while (1) {
-        // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
-        // remember the core timer runs at half the sysclk
-        LATAbits.LATA4 = 0;
-        if (PORTBbits.RB4 == 0) {
-            LATAbits.LATA4 = 1;
-            delay();
-            LATAbits.LATA4 = 0;
-            delay();
-            LATAbits.LATA4 = 1;
-            delay();
-            LATAbits.LATA4 = 0;
+        for (j = 0; j<101; j++)
+        {
+            int sin = sinarray[j];
+            int tri = triarray[j];
+            p1 = 0b0000000000000000;
+            p2 = 0b0000000000000000;
+            p1 = channel1 << 15;
+            p2 = channel2 << 15;
+            p1 = p1|(0b111<<12);
+            p2 = p2|(0b111<<12);
+            p1 = p1|(sin<<2);
+            p2 = p2|(tri<<2);
+            LATAbits.LATA0 = 0;
+            spi_io(p1>>8);
+            spi_io(p1);
+            LATAbits.LATA0 = 1;
+            LATAbits.LATA0 = 0;
+            spi_io(p2>>8);
+            spi_io(p2);
+            LATAbits.LATA0 = 1;
             delay();
         }
     }
@@ -74,5 +99,6 @@ int main() {
 
 void delay() {
     _CP0_SET_COUNT(0);
-        while(_CP0_GET_COUNT() < 24000000/2){} //1/2 sec
+        while(_CP0_GET_COUNT() < 48000000 / 200){} // 100 Hz
 }
+
